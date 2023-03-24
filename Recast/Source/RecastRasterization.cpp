@@ -126,21 +126,24 @@ static bool addSpan(rcHeightfield& hf,
 	// Insert the new span, possibly merging it with existing spans.
 	while (currentSpan != NULL)
 	{
+        // newSpan在currentSpan下面
 		if (currentSpan->smin > newSpan->smax)
 		{
 			// Current span is completely after the new span, break.
 			break;
 		}
-		
+		// newSpan在currentSpan上面
 		if (currentSpan->smax < newSpan->smin)
 		{
 			// Current span is completely before the new span.  Keep going.
 			previousSpan = currentSpan;
 			currentSpan = currentSpan->next;
 		}
+        // 重叠了
 		else
 		{
 			// The new span overlaps with an existing span.  Merge them.
+			// 合并smin和smax，newSpan和currentSpan中的最低smin和最高smax
 			if (currentSpan->smin < newSpan->smin)
 			{
 				newSpan->smin = currentSpan->smin;
@@ -151,6 +154,7 @@ static bool addSpan(rcHeightfield& hf,
 			}
 			
 			// Merge flags.
+            // 合并area标志，如果一个span比另一个高出walkableClim，则可行走
 			if (rcAbs((int)newSpan->smax - (int)currentSpan->smax) <= flagMergeThreshold)
 			{
 				// Higher area ID numbers indicate higher resolution priority.

@@ -103,6 +103,17 @@ void Sample_SoloMesh::handleSettings()
 		m_navQuery->init(m_navMesh, 2048);
 	}
 
+	if (imguiButton("Save HeightField"))
+	{
+		Sample::saveHeightfield("solo_heightfield.bin", m_solid);
+	}
+
+	if (imguiButton("Load HeightField"))
+	{
+		cleanup();
+		m_solid = Sample::loadHeightfield("solo_heightfield.bin");
+	}
+
 	imguiUnindent();
 	imguiUnindent();
 	
@@ -382,10 +393,12 @@ bool Sample_SoloMesh::handleBuild()
 	const float* verts = m_geom->getMesh()->getVerts();
 	const int nverts = m_geom->getMesh()->getVertCount();
 	const int* tris = m_geom->getMesh()->getTris();
+    // 三角形个数
 	const int ntris = m_geom->getMesh()->getTriCount();
 	
 	//
 	// Step 1. Initialize build config.
+    // Step 1. 初始化配置
 	//
 	
 	// Init build configuration from GUI
@@ -423,6 +436,7 @@ bool Sample_SoloMesh::handleBuild()
 	
 	//
 	// Step 2. Rasterize input polygon soup.
+    // Step 2. 光栅化
 	//
 	
 	// Allocate voxel heightfield where we rasterize our input data to.
@@ -452,7 +466,9 @@ bool Sample_SoloMesh::handleBuild()
 	// If your input data is multiple meshes, you can transform them here, calculate
 	// the are type for each of the meshes and rasterize them.
 	memset(m_triareas, 0, ntris*sizeof(unsigned char));
+    // 标记出可行走的三角形
 	rcMarkWalkableTriangles(m_ctx, m_cfg.walkableSlopeAngle, verts, nverts, tris, ntris, m_triareas);
+    // 光栅化
 	if (!rcRasterizeTriangles(m_ctx, verts, nverts, tris, m_triareas, ntris, *m_solid, m_cfg.walkableClimb))
 	{
 		m_ctx->log(RC_LOG_ERROR, "buildNavigation: Could not rasterize triangles.");
@@ -472,6 +488,7 @@ bool Sample_SoloMesh::handleBuild()
 	// Once all geoemtry is rasterized, we do initial pass of filtering to
 	// remove unwanted overhangs caused by the conservative rasterization
 	// as well as filter spans where the character cannot possibly stand.
+	// 当几何体光栅化后，根据Filter移除因对转式光栅化引入的不想要的悬挂,以及过滤角色无法站立的span
 	if (m_filterLowHangingObstacles)
 		rcFilterLowHangingWalkableObstacles(m_ctx, m_cfg.walkableClimb, *m_solid);
 	if (m_filterLedgeSpans)
@@ -482,17 +499,19 @@ bool Sample_SoloMesh::handleBuild()
 
 	//
 	// Step 4. Partition walkable surface to simple regions.
-	//
+	// 分割可行走面为简单的区域
 
 	// Compact the heightfield so that it is faster to handle from now on.
 	// This will result more cache coherent data as well as the neighbours
 	// between walkable cells will be calculated.
+	// 紧缩高度场让其更快，计算可行走格子时cache友好
 	m_chf = rcAllocCompactHeightfield();
 	if (!m_chf)
 	{
 		m_ctx->log(RC_LOG_ERROR, "buildNavigation: Out of memory 'chf'.");
 		return false;
 	}
+    // 构建紧缩高度场
 	if (!rcBuildCompactHeightfield(m_ctx, m_cfg.walkableHeight, m_cfg.walkableClimb, *m_solid, *m_chf))
 	{
 		m_ctx->log(RC_LOG_ERROR, "buildNavigation: Could not build compact data.");
@@ -582,6 +601,7 @@ bool Sample_SoloMesh::handleBuild()
 	
 	//
 	// Step 5. Trace and simplify region contours.
+    // 生成和简化轮廓
 	//
 	
 	// Create contours.

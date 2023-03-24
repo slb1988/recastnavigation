@@ -134,6 +134,9 @@ protected:
 	
 	dtNavMesh* loadAll(const char* path);
 	void saveAll(const char* path, const dtNavMesh* mesh);
+	rcHeightfield* loadHeightfield(const char* path);
+	void saveHeightfield(const char* path, const rcHeightfield* heightField);
+	
 
 public:
 	Sample();

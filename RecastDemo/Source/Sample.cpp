@@ -27,6 +27,7 @@
 #include "DetourNavMeshQuery.h"
 #include "DetourCrowd.h"
 #include "imgui.h"
+#include "RecastAlloc.h"
 #include "SDL.h"
 #include "SDL_opengl.h"
 
@@ -348,6 +349,101 @@ struct NavMeshTileHeader
 	int dataSize;
 };
 
+struct HeightFieldHeader
+{
+	int magic;
+	int version;
+	int width;			///< The width of the heightfield. (Along the x-axis in cell units.)
+	int height;			///< The height of the heightfield. (Along the z-axis in cell units.)
+	float bmin[3];  	///< The minimum bounds in world space. [(x, y, z)]
+	float bmax[3];		///< The maximum bounds in world space. [(x, y, z)]
+	float cs;			///< The size of each cell. (On the xz-plane.)
+	float ch;			///< The height of each cell. (The minimum increment along the y-axis.)
+};
+
+rcHeightfield* Sample::loadHeightfield(const char* path)
+{
+	FILE* fp = fopen(path, "rb");
+	if (!fp) return 0;
+
+	HeightFieldHeader header;
+	size_t readLen = fread(&header, sizeof(HeightFieldHeader), 1, fp);
+	if (readLen != 1)
+	{
+		fclose(fp);
+		return 0;
+	}
+	if (header.magic != NAVMESHSET_MAGIC)
+	{
+		fclose(fp);
+		return 0;
+	}
+	if (header.version != NAVMESHSET_VERSION)
+	{
+		fclose(fp);
+		return 0;
+	}
+	rcHeightfield* hf = rcAllocHeightfield();
+	if (!hf)
+	{
+		fclose(fp);
+		return 0;
+	}
+
+	memcpy(hf->bmin, header.bmin, sizeof(header.bmin));
+	memcpy(hf->bmax, header.bmax, sizeof(header.bmax));
+	hf->ch = header.ch;
+	hf->cs = header.cs;
+	hf->width = header.width;
+	hf->height = header.height;
+	hf->spans = (rcSpan**)rcAlloc(sizeof(rcSpan*)*hf->width * hf->height, RC_ALLOC_PERM);
+	if (!hf->spans)
+		return 0;
+	memset(hf->spans, 0, sizeof(rcSpan*)*hf->width*hf->height);
+
+	unsigned int cellNum = 0;
+	fread(&cellNum, sizeof(unsigned int), 1, fp);
+
+	for (unsigned int i = 0; i < cellNum; i++)
+	{
+		unsigned int x, y;
+		fread(&x, sizeof(unsigned int), 1, fp);
+		fread(&y, sizeof(unsigned int), 1, fp);
+		bool is_first_span = true;
+		rcSpan* lastS = nullptr;
+		bool has_next = false;
+		do
+		{
+			unsigned int smin, smax, area;
+			fread(&smin, sizeof(int), 1, fp);
+			fread(&smax, sizeof(int), 1, fp);
+			fread(&area, sizeof(int), 1, fp);
+			rcSpan* s = (rcSpan*)rcAlloc(sizeof(rcSpan), RC_ALLOC_PERM);
+			s->smin = smin;
+			s->smax = smax;
+			s->area = area;
+			s->next = nullptr;
+			if (is_first_span)
+				hf->spans[y*hf->width + x] = s;
+			else
+			{
+				lastS->next = s;
+			}
+
+			lastS = s;
+
+			char char_next;
+			fread(&char_next, sizeof(char), 1, fp);
+			has_next = (char_next == 1);
+		}
+		while (has_next);
+	}
+
+	fclose(fp);
+
+	return hf;
+}
+
 dtNavMesh* Sample::loadAll(const char* path)
 {
 	FILE* fp = fopen(path, "rb");
@@ -416,6 +512,70 @@ dtNavMesh* Sample::loadAll(const char* path)
 	fclose(fp);
 
 	return mesh;
+}
+
+void Sample::saveHeightfield(const char* path, const rcHeightfield* heightField)
+{
+	if (!heightField) return;
+
+	FILE* fp = fopen(path, "wb");
+	if (!fp)
+		return;
+
+	HeightFieldHeader header;
+	header.magic = NAVMESHSET_MAGIC;
+	header.version = NAVMESHSET_VERSION;
+	header.width = heightField->width;
+	header.height = heightField->height;
+	memcpy(header.bmin, heightField->bmin, sizeof(header.bmin));
+	memcpy(header.bmax, heightField->bmax, sizeof(header.bmax));
+	header.cs = heightField->cs;
+	header.ch = heightField->ch;
+	fwrite(&header, sizeof(HeightFieldHeader), 1, fp);
+	
+	unsigned int num = 0;
+	for (int y = 0; y < header.height; y++)
+	{
+		for (int x = 0; x < header.width; x++)
+		{
+			int idx = x + y * header.width;
+			rcSpan* s = heightField->spans[idx];
+			if (s == NULL)
+			{
+				continue;
+			}
+			num++;
+		}
+	}
+	fwrite(&num, sizeof(unsigned int), 1, fp);
+	
+	for (int y = 0; y < header.height; y++)
+	{
+		for (int x = 0; x < header.width; x++)
+		{
+			int idx = x + y * header.width;
+			rcSpan* s = heightField->spans[idx];
+			if (s == NULL)
+			{
+				continue;
+			}
+			fwrite(&x, sizeof(int), 1, fp);
+			fwrite(&y, sizeof(int), 1, fp);
+			while (s)
+			{
+				unsigned int tempi = s->smin;
+				fwrite(&tempi, sizeof(unsigned int), 1, fp);
+				tempi = s->smax;
+				fwrite(&tempi, sizeof(unsigned int), 1, fp);
+				tempi = s->area;
+				fwrite(&tempi, sizeof(unsigned int), 1, fp);
+				char has_next = s->next ? 1 : 0;
+				fwrite(&has_next, sizeof(char), 1, fp);
+				s = s->next;
+			}
+		}
+	}
+	fclose(fp);
 }
 
 void Sample::saveAll(const char* path, const dtNavMesh* mesh)
