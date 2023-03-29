@@ -91,7 +91,9 @@ class NavMeshTesterTool : public SampleTool
 	static const int MAX_STEER_POINTS = 10;
 	float m_steerPoints[MAX_STEER_POINTS*3];
 	int m_steerPointCount;
-	
+
+	char* str_chars = new char[256];
+
 public:
 	NavMeshTesterTool();
 

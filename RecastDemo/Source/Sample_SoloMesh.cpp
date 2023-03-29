@@ -242,7 +242,10 @@ void Sample_SoloMesh::handleRender()
 {
 	if (!m_geom || !m_geom->getMesh())
 		return;
-	
+
+	if (m_drawMode != DRAWMODE_VOXELS)
+		return;
+
 	glEnable(GL_FOG);
 	glDepthMask(GL_TRUE);
 

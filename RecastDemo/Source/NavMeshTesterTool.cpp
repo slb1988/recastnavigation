@@ -1381,12 +1381,16 @@ void NavMeshTesterTool::handleRenderOverlay(double* proj, double* model, int* vi
 	if (m_sposSet && gluProject((GLdouble)m_spos[0], (GLdouble)m_spos[1], (GLdouble)m_spos[2],
 								model, proj, view, &x, &y, &z))
 	{
-		imguiDrawText((int)x, (int)(y-25), IMGUI_ALIGN_CENTER, "Start", imguiRGBA(0,0,0,220));
+		memset(str_chars, 0, 256);
+		sprintf(str_chars, "Start (%f,%f,%f)", m_spos[0], m_spos[1], m_spos[2]);
+		imguiDrawText((int)x, (int)(y-25), IMGUI_ALIGN_CENTER, str_chars, imguiRGBA(0,0,0,220));
 	}
 	if (m_eposSet && gluProject((GLdouble)m_epos[0], (GLdouble)m_epos[1], (GLdouble)m_epos[2],
 								model, proj, view, &x, &y, &z))
 	{
-		imguiDrawText((int)x, (int)(y-25), IMGUI_ALIGN_CENTER, "End", imguiRGBA(0,0,0,220));
+		memset(str_chars, 0, 256);
+		sprintf(str_chars, "End (%f,%f,%f)", m_epos[0], m_epos[1], m_epos[2]);
+		imguiDrawText((int)x, (int)(y-25), IMGUI_ALIGN_CENTER, str_chars, imguiRGBA(0,0,0,220));
 	}
 	
 	// Tool help
