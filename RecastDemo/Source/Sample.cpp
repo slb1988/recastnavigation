@@ -179,8 +179,8 @@ void Sample::collectSettings(BuildSettings& settings)
 
 void Sample::resetCommonSettings()
 {
-	m_cellSize = 0.3f;
-	m_cellHeight = 0.2f;
+	m_cellSize = 0.5f;
+	m_cellHeight = 0.5f;
 	m_agentHeight = 2.0f;
 	m_agentRadius = 0.6f;
 	m_agentMaxClimb = 0.9f;
@@ -361,6 +361,12 @@ struct HeightFieldHeader
 	float ch;			///< The height of each cell. (The minimum increment along the y-axis.)
 };
 
+struct rcSpanTemp
+{
+	unsigned int smin : RC_SPAN_HEIGHT_BITS; ///< The lower limit of the span. [Limit: < #smax]
+	unsigned int smax : RC_SPAN_HEIGHT_BITS; ///< The upper limit of the span. [Limit: <= #RC_SPAN_MAX_HEIGHT]
+	unsigned int area : 6;                   ///< The area id assigned to the span.
+};
 rcHeightfield* Sample::loadHeightfield(const char* path)
 {
 	FILE* fp = fopen(path, "rb");
@@ -414,17 +420,22 @@ rcHeightfield* Sample::loadHeightfield(const char* path)
 		bool has_next = false;
 		do
 		{
-			unsigned int smin, smax, area;
-			fread(&smin, sizeof(int), 1, fp);
-			fread(&smax, sizeof(int), 1, fp);
-			fread(&area, sizeof(int), 1, fp);
+			rcSpanTemp _span;
+			fread(&_span, sizeof(rcSpanTemp), 1, fp);
+			//unsigned int smin, smax, area;
+			//fread(&smin, sizeof(int), 1, fp);
+			//fread(&smax, sizeof(int), 1, fp);
+			//fread(&area, sizeof(int), 1, fp);
 			rcSpan* s = (rcSpan*)rcAlloc(sizeof(rcSpan), RC_ALLOC_PERM);
-			s->smin = smin;
-			s->smax = smax;
-			s->area = area;
+			s->smin = _span.smin;
+			s->smax = _span.smax;
+			s->area = _span.area;
 			s->next = nullptr;
 			if (is_first_span)
+			{
 				hf->spans[y*hf->width + x] = s;
+				is_first_span = false;
+			}
 			else
 			{
 				lastS->next = s;
@@ -529,11 +540,14 @@ void Sample::saveHeightfield(const char* path, const rcHeightfield* heightField)
 	header.height = heightField->height;
 	memcpy(header.bmin, heightField->bmin, sizeof(header.bmin));
 	memcpy(header.bmax, heightField->bmax, sizeof(header.bmax));
+	// 转换坐标系
+	header.bmin[0] *= -1;
+	header.bmax[0] *= -1;
 	header.cs = heightField->cs;
 	header.ch = heightField->ch;
 	fwrite(&header, sizeof(HeightFieldHeader), 1, fp);
 	
-	unsigned int num = 0;
+	unsigned int validCellNum = 0;
 	for (int y = 0; y < header.height; y++)
 	{
 		for (int x = 0; x < header.width; x++)
@@ -544,11 +558,12 @@ void Sample::saveHeightfield(const char* path, const rcHeightfield* heightField)
 			{
 				continue;
 			}
-			num++;
+			validCellNum++;
 		}
 	}
-	fwrite(&num, sizeof(unsigned int), 1, fp);
-	
+	fwrite(&validCellNum, sizeof(unsigned int), 1, fp);
+
+	int allSpanNum = 0;
 	for (int y = 0; y < header.height; y++)
 	{
 		for (int x = 0; x < header.width; x++)
@@ -559,16 +574,18 @@ void Sample::saveHeightfield(const char* path, const rcHeightfield* heightField)
 			{
 				continue;
 			}
+			// 转换为左手坐标系的x
+			//int lhs_x = (header.width - x);
 			fwrite(&x, sizeof(int), 1, fp);
 			fwrite(&y, sizeof(int), 1, fp);
 			while (s)
 			{
-				unsigned int tempi = s->smin;
-				fwrite(&tempi, sizeof(unsigned int), 1, fp);
-				tempi = s->smax;
-				fwrite(&tempi, sizeof(unsigned int), 1, fp);
-				tempi = s->area;
-				fwrite(&tempi, sizeof(unsigned int), 1, fp);
+				rcSpanTemp _span;
+				_span.smin = s->smin;
+				_span.smax = s->smax;
+				_span.area = s->area;
+				fwrite(&_span, sizeof(rcSpanTemp), 1, fp);
+				allSpanNum++;
 				char has_next = s->next ? 1 : 0;
 				fwrite(&has_next, sizeof(char), 1, fp);
 				s = s->next;
